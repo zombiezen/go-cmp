@@ -130,7 +130,7 @@ func TestOptionPanic(t *testing.T) {
 		label:     "FilterPath",
 		fnc:       FilterPath,
 		args:      []interface{}{func(Path) bool { return true }, &defaultReporter{}},
-		wantPanic: "unknown option type",
+		wantPanic: "invalid option type",
 	}, {
 		label: "FilterPath",
 		fnc:   FilterPath,
@@ -139,7 +139,7 @@ func TestOptionPanic(t *testing.T) {
 		label:     "FilterPath",
 		fnc:       FilterPath,
 		args:      []interface{}{func(Path) bool { return true }, Options{Ignore(), &defaultReporter{}}},
-		wantPanic: "unknown option type",
+		wantPanic: "invalid option type",
 	}, {
 		label:     "FilterValues",
 		fnc:       FilterValues,
@@ -172,7 +172,7 @@ func TestOptionPanic(t *testing.T) {
 		label:     "FilterValues",
 		fnc:       FilterValues,
 		args:      []interface{}{func(int, int) bool { return true }, &defaultReporter{}},
-		wantPanic: "unknown option type",
+		wantPanic: "invalid option type",
 	}, {
 		label: "FilterValues",
 		fnc:   FilterValues,
@@ -181,11 +181,11 @@ func TestOptionPanic(t *testing.T) {
 		label:     "FilterValues",
 		fnc:       FilterValues,
 		args:      []interface{}{func(int, int) bool { return true }, Options{Ignore(), &defaultReporter{}}},
-		wantPanic: "unknown option type",
+		wantPanic: "invalid option type",
 	}}
 
 	for _, tt := range tests {
-		t.Run(tt.label, func(t *testing.T) {
+		tRun(t, tt.label, func(t *testing.T) {
 			var gotPanic string
 			func() {
 				defer func() {
@@ -213,5 +213,19 @@ func TestOptionPanic(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TODO: Delete this hack when we drop Go1.6 support.
+func tRun(t *testing.T, name string, f func(t *testing.T)) {
+	type runner interface {
+		Run(string, func(t *testing.T)) bool
+	}
+	var ti interface{} = t
+	if r, ok := ti.(runner); ok {
+		r.Run(name, f)
+	} else {
+		t.Logf("Test: %s", name)
+		f(t)
 	}
 }

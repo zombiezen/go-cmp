@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE.md file.
 
-// +build !appengine,!js
+// +build !purego,!appengine,!js
 
 package cmp
 
@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"unsafe"
 )
+
+const supportAllowUnexported = true
 
 // unsafeRetrieveField uses unsafe to forcibly retrieve any field from a struct
 // such that the value has read-write permissions.

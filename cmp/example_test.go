@@ -10,14 +10,123 @@ import (
 	"reflect"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/google/go-cmp/cmp"
 )
 
+// TODO: Re-write these examples in terms of how you actually use the
+// fundamental options and filters and not in terms of what cool things you can
+// do with them since that overlaps with cmp/cmpopts.
+
+// Use Diff for printing out human-readable errors for test cases comparing
+// nested or structured data.
+func ExampleDiff_testing() {
+	// Code under test:
+	type ShipManifest struct {
+		Name     string
+		Crew     map[string]string
+		Androids int
+		Stolen   bool
+	}
+
+	// AddCrew tries to add the given crewmember to the manifest.
+	AddCrew := func(m *ShipManifest, name, title string) {
+		if m.Crew == nil {
+			m.Crew = make(map[string]string)
+		}
+		m.Crew[title] = name
+	}
+
+	// Test function:
+	tests := []struct {
+		desc        string
+		before      *ShipManifest
+		name, title string
+		after       *ShipManifest
+	}{
+		{
+			desc:   "add to empty",
+			before: &ShipManifest{},
+			name:   "Zaphod Beeblebrox",
+			title:  "Galactic President",
+			after: &ShipManifest{
+				Crew: map[string]string{
+					"Zaphod Beeblebrox": "Galactic President",
+				},
+			},
+		},
+		{
+			desc: "add another",
+			before: &ShipManifest{
+				Crew: map[string]string{
+					"Zaphod Beeblebrox": "Galactic President",
+				},
+			},
+			name:  "Trillian",
+			title: "Human",
+			after: &ShipManifest{
+				Crew: map[string]string{
+					"Zaphod Beeblebrox": "Galactic President",
+					"Trillian":          "Human",
+				},
+			},
+		},
+		{
+			desc: "overwrite",
+			before: &ShipManifest{
+				Crew: map[string]string{
+					"Zaphod Beeblebrox": "Galactic President",
+				},
+			},
+			name:  "Zaphod Beeblebrox",
+			title: "Just this guy, you know?",
+			after: &ShipManifest{
+				Crew: map[string]string{
+					"Zaphod Beeblebrox": "Just this guy, you know?",
+				},
+			},
+		},
+	}
+
+	var t fakeT
+	for _, test := range tests {
+		AddCrew(test.before, test.name, test.title)
+		if diff := cmp.Diff(test.before, test.after); diff != "" {
+			t.Errorf("%s: after AddCrew, manifest differs: (-got +want)\n%s", test.desc, diff)
+		}
+	}
+
+	// Output:
+	// add to empty: after AddCrew, manifest differs: (-got +want)
+	// {*cmp_test.ShipManifest}.Crew["Galactic President"]:
+	// 	-: "Zaphod Beeblebrox"
+	// 	+: <non-existent>
+	// {*cmp_test.ShipManifest}.Crew["Zaphod Beeblebrox"]:
+	// 	-: <non-existent>
+	// 	+: "Galactic President"
+	//
+	// add another: after AddCrew, manifest differs: (-got +want)
+	// {*cmp_test.ShipManifest}.Crew["Human"]:
+	// 	-: "Trillian"
+	// 	+: <non-existent>
+	// {*cmp_test.ShipManifest}.Crew["Trillian"]:
+	// 	-: <non-existent>
+	// 	+: "Human"
+	//
+	// overwrite: after AddCrew, manifest differs: (-got +want)
+	// {*cmp_test.ShipManifest}.Crew["Just this guy, you know?"]:
+	// 	-: "Zaphod Beeblebrox"
+	// 	+: <non-existent>
+	// {*cmp_test.ShipManifest}.Crew["Zaphod Beeblebrox"]:
+	// 	-: "Galactic President"
+	// 	+: "Just this guy, you know?"
+}
+
 // Approximate equality for floats can be handled by defining a custom
 // comparer on floats that determines two values to be equal if they are within
 // some range of each other.
+//
+// This example is for demonstrative purposes; use cmpopts.EquateApprox instead.
 func ExampleOption_approximateFloats() {
 	// This Comparer only operates on float64.
 	// To handle float32s, either define a similar function for that type
@@ -44,6 +153,8 @@ func ExampleOption_approximateFloats() {
 
 // Normal floating-point arithmetic defines == to be false when comparing
 // NaN with itself. In certain cases, this is not the desired property.
+//
+// This example is for demonstrative purposes; use cmpopts.EquateNaNs instead.
 func ExampleOption_equalNaNs() {
 	// This Comparer only operates on float64.
 	// To handle float32s, either define a similar function for that type
@@ -69,6 +180,9 @@ func ExampleOption_equalNaNs() {
 // To have floating-point comparisons combine both properties of NaN being
 // equal to itself and also approximate equality of values, filters are needed
 // to restrict the scope of the comparison so that they are composable.
+//
+// This example is for demonstrative purposes;
+// use cmpopts.EquateNaNs and cmpopts.EquateApprox instead.
 func ExampleOption_equalNaNsAndApproximateFloats() {
 	alwaysEqual := cmp.Comparer(func(_, _ interface{}) bool { return true })
 
@@ -106,6 +220,8 @@ func ExampleOption_equalNaNsAndApproximateFloats() {
 
 // Sometimes, an empty map or slice is considered equal to an allocated one
 // of zero length.
+//
+// This example is for demonstrative purposes; use cmpopts.EquateEmpty instead.
 func ExampleOption_equalEmpty() {
 	alwaysEqual := cmp.Comparer(func(_, _ interface{}) bool { return true })
 
@@ -135,71 +251,18 @@ func ExampleOption_equalEmpty() {
 	// false
 }
 
-// Equal compares map keys using Go's == operator. To use Equal itself on
-// map keys, transform the map into something else, like a slice of
-// key-value pairs.
-func ExampleOption_transformMap() {
-	type KV struct {
-		K time.Time
-		V string
-	}
-	// This transformer flattens the map as a slice of sorted key-value pairs.
-	// We can now safely rely on the Time.Equal to be used for equality.
-	trans := cmp.Transformer("", func(m map[time.Time]string) (s []KV) {
-		for k, v := range m {
-			s = append(s, KV{k, v})
-		}
-		sort.Slice(s, func(i, j int) bool {
-			return s[i].K.Before(s[j].K)
-		})
-		return s
-	})
-
-	t1 := time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
-	t2 := time.Date(2010, time.November, 10, 23, 0, 0, 0, time.UTC)
-	t3 := time.Date(2011, time.November, 10, 23, 0, 0, 0, time.UTC)
-
-	x := map[time.Time]string{
-		t1.In(time.UTC): "0th birthday",
-		t2.In(time.UTC): "1st birthday",
-		t3.In(time.UTC): "2nd birthday",
-	}
-	y := map[time.Time]string{
-		t1.In(time.Local): "0th birthday",
-		t2.In(time.Local): "1st birthday",
-		t3.In(time.Local): "2nd birthday",
-	}
-	z := map[time.Time]string{
-		time.Now(): "a long long",
-		time.Now(): "time ago",
-		time.Now(): "in a galaxy far far away",
-	}
-
-	fmt.Println(cmp.Equal(x, y, trans))
-	fmt.Println(cmp.Equal(y, z, trans))
-	fmt.Println(cmp.Equal(z, x, trans))
-
-	// Output:
-	// true
-	// false
-	// false
-}
-
 // Two slices may be considered equal if they have the same elements,
 // regardless of the order that they appear in. Transformations can be used
 // to sort the slice.
+//
+// This example is for demonstrative purposes; use cmpopts.SortSlices instead.
 func ExampleOption_sortedSlice() {
 	// This Transformer sorts a []int.
-	// Since the transformer transforms []int into []int, there is problem where
-	// this is recursively applied forever. To prevent this, use a FilterValues
-	// to first check for the condition upon which the transformer ought to apply.
-	trans := cmp.FilterValues(func(x, y []int) bool {
-		return !sort.IntsAreSorted(x) || !sort.IntsAreSorted(y)
-	}, cmp.Transformer("Sort", func(in []int) []int {
+	trans := cmp.Transformer("Sort", func(in []int) []int {
 		out := append([]int(nil), in...) // Copy input to avoid mutating it
 		sort.Ints(out)
 		return out
-	}))
+	})
 
 	x := struct{ Ints []int }{[]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}
 	y := struct{ Ints []int }{[]int{2, 8, 0, 9, 6, 1, 4, 7, 3, 5}}
@@ -300,3 +363,7 @@ func ExampleOption_transformComplex() {
 	// false
 	// false
 }
+
+type fakeT struct{}
+
+func (t fakeT) Errorf(format string, args ...interface{}) { fmt.Printf(format+"\n", args...) }
